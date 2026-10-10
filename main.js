@@ -68,7 +68,7 @@ client.on('interactionCreate', async interaction => {
     VALIDATIONS FOR INTERACTION EXECUTION
     -------------------------------------
     */
-    if (!interaction.isCommand() ||
+    if ((!interaction.isCommand() && !interaction.isAutocomplete()) ||
         !interaction.inGuild()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -78,6 +78,19 @@ client.on('interactionCreate', async interaction => {
     const gService = new guildService(
         await new sqlLite3DatabaseService(sqlite3, `./guilds/${guildId}.db`)
     )
+    if (interaction.isAutocomplete()) {
+        try {
+            // Typing suggestions must not run the XP schema migration on every keypress.
+            if (command.autocomplete && await gService.isRegistered()) {
+                await gService.factions.init();
+                await command.autocomplete(gService, interaction);
+            } else { await interaction.respond([]); }
+        } catch (error) {
+            console.log(error);
+            if (!interaction.responded) { await interaction.respond([]); }
+        }
+        return;
+    }
     await gService.init();
     if (!await gService.isRegistered() && command.data.name != "register") {
         // Try Catch on the reply, because this is a restful call, and errors can be found
