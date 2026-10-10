@@ -27,7 +27,7 @@ module.exports = {
         }
         const render = () => ({
             embeds: [buildRenownEmbed(service, character, factions[index])
-                .setFooter({ text: `Faction ${index + 1} of ${factions.length} • Character ${characterIndex} • Requirements are cumulative per faction` })],
+                .setFooter({ text: `Faction ${index + 1} of ${factions.length} • Character ${characterIndex}` })],
             components: renownComponents(factions, index), allowedMentions: { parse: [] },
         });
         const reply = await interaction.editReply(render());

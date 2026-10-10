@@ -1,6 +1,6 @@
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, StringSelectMenuBuilder } = require('discord.js');
 const { XPHOLDER_COLOUR } = require('./config.json');
-const { FACTION_RANKS, getFactionStanding } = require('./factionRanks');
+const { FACTION_RANKS, NEGATIVE_FACTION_RANKS, getFactionStanding } = require('./factionRanks');
 
 function isFactionModerator(service, interaction) {
     return service.isMod(interaction.member._roles) || interaction.user.id === interaction.guild.ownerId;
@@ -25,25 +25,28 @@ function buildFactionEmbed(faction) {
 }
 
 function renownProgressBar(renown) {
-    const magnitude = Math.abs(renown);
-    const filledCell = renown < 0 ? '🟥' : '🟩';
+    if (renown < 0) {
+        const cells = 6;
+        const limit = Math.abs(NEGATIVE_FACTION_RANKS.at(-1).renown);
+        const filled = Math.max(1, Math.floor(Math.min(1, Math.abs(renown) / limit) * cells));
+        return '⬛'.repeat(cells - filled) + '🟥'.repeat(filled);
+    }
     const cellsPerSegment = 3;
-    const segments = FACTION_RANKS.slice(1).map((rank, index) => {
-        const start = FACTION_RANKS[index].renown;
-        const progress = Math.max(0, Math.min(1, (magnitude - start) / (rank.renown - start)));
-        // Even a small positive/negative amount is visible; only a completed
+    const thresholds = FACTION_RANKS.slice(1).map(rank => rank.renown);
+    const segments = thresholds.map((threshold, index) => {
+        const start = thresholds[index - 1] ?? 0;
+        const progress = Math.max(0, Math.min(1, (renown - start) / (threshold - start)));
+        // Even a small positive amount is visible; only a completed
         // threshold fills the entire segment.
         const filled = progress > 0 ? Math.max(1, Math.floor(progress * cellsPerSegment)) : 0;
-        return filledCell.repeat(filled) + '⬛'.repeat(cellsPerSegment - filled);
+        return '🟩'.repeat(filled) + '⬛'.repeat(cellsPerSegment - filled);
     });
-    return segments.join(' │ ');
+    return segments.join(' - ');
 }
 
 function renownProgressText(renown) {
-    const legend = renown < 0 ?
-        'Negative renown; red fill shows its magnitude. Rank remains Unknown.' :
-        FACTION_RANKS.slice(1).map(rank => `${rank.name} ${rank.renown}`).join(' • ') +
-            '\nSegments show renown only; quest and tier requirements still apply.';
+    if (renown < 0) { return renownProgressBar(renown); }
+    const legend = FACTION_RANKS.slice(1).map(rank => `${rank.name} ${rank.renown}`).join(' • ');
     return `${renownProgressBar(renown)}\n${legend}`;
 }
 

@@ -1,13 +1,14 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
+const { PermissionFlagsBits } = require('discord.js');
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('register')
-        .setDescription('Registers The Server! [ OWNER ]')
+        .setDescription('Registers The Server! [ MOD ]')
 
         .addRoleOption(option => option
             .setName("moderation_role")
-            .setDescription("A Role Which Allows Users To Use The Mod Roles")
+            .setDescription("The Role Allowed To Use Moderator Commands")
             .setRequired(true))
         .addIntegerOption(option => option
             .setName("number_of_characters")
@@ -27,8 +28,17 @@ module.exports = {
         VALIDATION
         ----------
         */
-        if (interaction.user.id != interaction.guild.ownerId){
-            await interaction.editReply("Sorry, but you are not the owner of the server, and can not use this command.")
+        // The configured moderator role does not exist until this first setup.
+        const permissions = interaction.memberPermissions;
+        const canRegister = interaction.user.id === interaction.guild.ownerId ||
+            permissions?.has(PermissionFlagsBits.ManageGuild) ||
+            permissions?.has(PermissionFlagsBits.ModerateMembers);
+        if (!canRegister) {
+            await interaction.editReply("You need Moderate Members, Manage Server, or Administrator permission to register the server.");
+            return;
+        }
+        if (await guildService.isRegistered()) {
+            await interaction.editReply("This server is already registered. Use the editing commands to update its settings.");
             return;
         }
         /*

@@ -11,7 +11,6 @@ const {CLIENT_ID, TESTING_SERVER_ID} = require("./xpholder/config.json");
 const commands = [];
 let commandsPath = [
     "everyone",
-    "owner",
 	"mod"
 ];
 let commandCollection = [];

@@ -9,13 +9,29 @@ const FACTION_RANKS = [
     { name: 'Champion', renown: 120, quests: 2, soloChallenges: 1, tier: 4 },
 ];
 
+const NEGATIVE_FACTION_RANKS = [
+    { name: 'Distrusted', renown: -1 },
+    { name: 'Nemesis', renown: -15 },
+];
+
 function getFactionStanding(levels, character, relation = {}, config = {}) {
     const renown = relation.renown ?? 0;
     const quests = relation.quests ?? 0;
     const soloChallenges = relation.solo_challenges ?? 0;
     const level = Number(getCharacterLevelInfo(levels, character, config).level);
     const tier = getTier(level).tier;
-    // Unknown includes negative renown until negative ranks are defined.
+    if (renown <= NEGATIVE_FACTION_RANKS[0].renown) {
+        const rankIndex = NEGATIVE_FACTION_RANKS.findLastIndex(rank => renown <= rank.renown);
+        const rank = NEGATIVE_FACTION_RANKS[rankIndex];
+        // Negative thresholds are inclusive: recovering from Nemesis starts at -14.
+        const nextRank = rankIndex === 0 ? FACTION_RANKS[0] : {
+            ...NEGATIVE_FACTION_RANKS[rankIndex - 1], renown: rank.renown + 1,
+        };
+        return {
+            rank: rank.name, renown, quests, soloChallenges, level, tier, nextRank,
+            missing: [`${nextRank.renown - renown} more renown (${nextRank.renown} total)`],
+        };
+    }
     let rankIndex = 0;
     for (let index = 1; index < FACTION_RANKS.length; index++) {
         const rank = FACTION_RANKS[index];
@@ -36,4 +52,4 @@ function getFactionStanding(levels, character, relation = {}, config = {}) {
     };
 }
 
-module.exports = { FACTION_RANKS, getFactionStanding };
+module.exports = { FACTION_RANKS, NEGATIVE_FACTION_RANKS, getFactionStanding };

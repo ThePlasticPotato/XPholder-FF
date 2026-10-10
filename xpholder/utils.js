@@ -261,7 +261,7 @@
 				{ inline: false, name: `Progress`, value: `${progress}` },
 				{ inline: false, name: "Level-Up Requirement", value: getRequirementStatus(guildService.levels, characterObj, guildService.config) }
 			)
-			.setFooter({ text: `Dont Like What You See? Try /edit_character (${characterObj["character_index"]}/${guildService.config["characterCount"]})` })
+			.setFooter({ text: `Character ${characterObj["character_index"]} of ${guildService.config["characterCount"]}` })
 			.setColor(XPHOLDER_COLOUR);
 
 		if (characterObj["sheet_url"] != "") {
@@ -326,7 +326,7 @@
 		const loggingChannel = await testingServer.channels.fetch(LOGING_CHANNEL_ID);
 
 		// SENDING LOG EMBED
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [logEmbed]
 		});
 	}
@@ -346,7 +346,7 @@
 		const testingServer = await client.guilds.fetch(TESTING_SERVER_ID);
 		const loggingChannel = await testingServer.channels.fetch(ERROR_CHANNEL_ID);
 			// REPORTING THE ERROR
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [xplogEmbed]
 		});
 	}
@@ -378,7 +378,7 @@
 		const loggingChannel = await testingServer.channels.fetch(ERROR_CHANNEL_ID);
 
 		// REPORTING THE ERROR
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [logErrorEmbed]
 		});
 	}
