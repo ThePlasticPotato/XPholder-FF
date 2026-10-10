@@ -129,6 +129,8 @@ client.on('messageCreate', async message => {
         if (!message.inGuild()) { return; }
         if (message.author.bot) { return; }
         if ((message.content.split(/\s+/).length <= 10) && !message.content.startsWith('!')) { return; }
+				// Not too sure if the above is correct, seems like it would allow commands consisting of 10+ words	through
+
         /*
         --------------------------------
         LOADING GUILD INTO CACHED GUILDS
