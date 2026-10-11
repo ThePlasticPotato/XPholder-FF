@@ -2,7 +2,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { ActionRowBuilder, ButtonBuilder, EmbedBuilder } = require('discord.js');
 
 const { XPHOLDER_RETIRE_COLOUR, XPHOLDER_APPROVE_COLOUR, XPHOLDER_LEVEL_UP_COLOUR } = require("../../config.json");
-const { buildCharacterEmbed, getActiveCharacterIndex, getTier, getLevelInfo } = require("../../utils");
+const { buildCharacterEmbed, getActiveCharacterIndex, getTier, getCharacterLevelInfo } = require("../../utils");
 
 
 module.exports = {
@@ -149,17 +149,18 @@ function createButtonEvents(guildService, interaction, player, replyMessage, pla
                     break;
                 case "xp_set":
                     retire = false;
+                    await guildService.init();
                     /*
                     -------------
                     INITALIZATION
                     -------------
                     */
-                    const oldCharacter = playerCharacters[embedCharacterIndex];
-                    const oldCharacterLevelInfo = getLevelInfo(guildService.levels, oldCharacter["xp"]);
+                    const oldCharacter = await guildService.getCharacter(playerCharacters[embedCharacterIndex].character_id);
+                    const oldCharacterLevelInfo = getCharacterLevelInfo(guildService.levels, oldCharacter, guildService.config);
                     const oldCharacterTier = getTier(parseInt(oldCharacterLevelInfo["level"]));
                     
-                    const newCharacter = playerCharacters[pageIndex]
-                    const newCharacterLevelInfo = getLevelInfo(guildService.levels, newCharacter["xp"]);
+                    const newCharacter = await guildService.getCharacter(playerCharacters[pageIndex].character_id);
+                    const newCharacterLevelInfo = getCharacterLevelInfo(guildService.levels, newCharacter, guildService.config);
                     const newCharacterTier = getTier(parseInt(newCharacterLevelInfo["level"]));
 
                     
@@ -195,6 +196,7 @@ function createButtonEvents(guildService, interaction, player, replyMessage, pla
                     BUILDING EMBED
                     --------------
                     */
+                    characterEmbeds[pageIndex] = buildCharacterEmbed(guildService, player, newCharacter);
                     characterEmbedData = characterEmbeds[pageIndex].data;
                     copyOfEmbed = new EmbedBuilder()
                         .setTitle(characterEmbedData.title)
@@ -267,8 +269,7 @@ function createButtonEvents(guildService, interaction, player, replyMessage, pla
                         try {
                             awardChannel = await guild.channels.fetch(guildService.config["levelUpChannelId"]);
                         } catch (error) {
-                            const owner = await guild.members.fetch(guild.ownerId);
-                            await btnInteraction.update({content:`Sorry, but I can't find the **level_up_channel**.\nPlease contact ${owner} and ask them to set a new **level_up_channel** with : \`/edit_config\``});
+                            await btnInteraction.update({content: "Sorry, but I can't find the **level_up_channel**.\nPlease ask a moderator to set a new **level_up_channel** with `/edit_config`."});
                             return;
                         }
                         /*

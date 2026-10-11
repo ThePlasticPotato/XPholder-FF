@@ -2,26 +2,7 @@
 
 	const { XPHOLDER_COLOUR, XPHOLDER_ICON_URL, DEV_SERVER_URL, XPHOLDER_RETIRE_COLOUR, TESTING_SERVER_ID, LOGING_CHANNEL_ID, ERROR_CHANNEL_ID } = require("./config.json");
 
-	/*
-	------
-	AWARDS
-	------
-	*/
-	function awardCXPs(startingXp, cxp, levels) {
-		for (; cxp > 0; cxp--) {
-			startingXp += awardCXP(startingXp, levels)
-		}
-		return startingXp;
-	}
-
-	function awardCXP(xp, levels) {
-		const levelInfo = getLevelInfo(levels, xp);
-
-		if (parseInt(levelInfo["level"]) < 4) {
-			return levelInfo["xpToNext"] / 4
-		}
-		return levelInfo["xpToNext"] / 8
-	}
+	const { awardCXPs, getLevelInfo, getCharacterLevelInfo, getRequirementStatus } = require("./progression");
 
 	/*
 	-------
@@ -141,41 +122,6 @@
 		return 1;
 	}
 
-	function getLevelInfo(levelObj, xp) {
-		/*
-		Parameters
-		----------
-		levelObj : object
-		{
-			"1" : 300, ( xp needed to level up )
-			"2" : 600
-		}
-
-		xp : number
-
-		Returns
-		-------
-		object : 
-		{
-			"level" : "stringLevel",
-			"levelXp" : 0,
-			"xpToNext" : 0
-		}
-		*/
-		for (const [lvl, xpToNext] of Object.entries(levelObj)) {
-			// subtract the lower level xp
-			xp -= xpToNext;
-			// if the xp went into the negatives, than that means, this is the level the player is on
-			if (xp < 0) {
-				// adding back the xp and returning the object
-				xp += xpToNext;
-				return { "level": lvl, "levelXp": xp, "xpToNext": xpToNext }
-			}
-		}
-		// if all the levels were itterated, and the player still has left over xp. Than they are max xp
-		return { "level": "20", "levelXp": xp, "xpToNext": xp }
-	}
-
 	function getRoleMultiplier(roleBonus, collectionOfGuildRoles, listOfPlayerRoles) {
 		/*
 		Parameters
@@ -202,16 +148,13 @@
 		*/
 		let roleMultiplier = 1;
 		switch (roleBonus) {
-			case "highest":
-				for (const roleId of listOfPlayerRoles) {
-					// if the players role is not in the object of role bonus, skip
-					if (!(roleId in collectionOfGuildRoles)) { continue; }
-					// if the player does have a role that is in the collection, and the role is greater than the current role, set the current role to that
-					if (collectionOfGuildRoles[roleId] > roleMultiplier) { roleMultiplier = collectionOfGuildRoles[roleId]; }
-					// if the player has the xp freeze role, or any other role with 0 xp bonus, to set the role and return
-					else if (collectionOfGuildRoles[roleId] == 0) { roleMultiplier = 0; break; }
-				}
+			case "highest": {
+				const multipliers = listOfPlayerRoles.filter(roleId => roleId in collectionOfGuildRoles)
+					.map(roleId => Number(collectionOfGuildRoles[roleId]));
+				// Use 1 only when no bonus applies; fractional multipliers can reduce XP.
+				if (multipliers.length) { roleMultiplier = multipliers.includes(0) ? 0 : Math.max(...multipliers); }
 				break;
+			}
 			case "sum":
 				for (const roleId of listOfPlayerRoles) {
 					// if the players role is not in the object of role bonus, skip
@@ -293,7 +236,7 @@
 			https://discord.js.org/#/docs/builders/main/class/EmbedBuilder
 		*/
 		// { "level" : STRING, "levelXp" : NUMBER, "xpToNext" : NUMBER }
-		const levelInfo = getLevelInfo(guildService.levels, characterObj["xp"]);
+		const levelInfo = getCharacterLevelInfo(guildService.levels, characterObj, guildService.config);
 
 		const progress = getProgressionBar(levelInfo["levelXp"], levelInfo["xpToNext"]);
 		let tierInfo = getTier(parseInt(levelInfo["level"]));
@@ -312,9 +255,10 @@
 				{ inline: true, name: "Current Level XP", value: `${Math.floor(levelInfo["levelXp"])}` },
 				{ inline: true, name: "Next Level XP", value: `${Math.floor(levelInfo["xpToNext"])}` },
 
-				{ inline: false, name: `Progress`, value: `${progress}` }
+				{ inline: false, name: `Progress`, value: `${progress}` },
+				{ inline: false, name: "Level-Up Requirement", value: getRequirementStatus(guildService.levels, characterObj, guildService.config) }
 			)
-			.setFooter({ text: `Dont Like What You See? Try /edit_character (${characterObj["character_index"]}/${guildService.config["characterCount"]})` })
+			.setFooter({ text: `Character ${characterObj["character_index"]} of ${guildService.config["characterCount"]}` })
 			.setColor(XPHOLDER_COLOUR);
 
 		if (characterObj["sheet_url"] != "") {
@@ -339,7 +283,7 @@
 		|█████----------| 33% Complete
 		*/
 		let progressMessage = "```|";
-		const progress = xp / xpToNext;
+		const progress = xpToNext > 0 ? Math.max(0, Math.min(1, xp / xpToNext)) : 1;
 
 		for (let i = 0; i < Math.round(progress * 15); i++) { progressMessage += "█"; }
 		for (let i = 0; i < Math.round((1 - progress) * 15); i++) { progressMessage += "-"; }
@@ -379,7 +323,7 @@
 		const loggingChannel = await testingServer.channels.fetch(LOGING_CHANNEL_ID);
 
 		// SENDING LOG EMBED
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [logEmbed]
 		});
 	}
@@ -399,7 +343,7 @@
 		const testingServer = await client.guilds.fetch(TESTING_SERVER_ID);
 		const loggingChannel = await testingServer.channels.fetch(ERROR_CHANNEL_ID);
 			// REPORTING THE ERROR
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [xplogEmbed]
 		});
 	}
@@ -431,7 +375,7 @@
 		const loggingChannel = await testingServer.channels.fetch(ERROR_CHANNEL_ID);
 
 		// REPORTING THE ERROR
-		loggingChannel.send({
+		await loggingChannel.send({
 			embeds: [logErrorEmbed]
 		});
 	}
@@ -458,10 +402,26 @@
 		)
 	}
 
+	async function syncCharacterTierRole(guildService, player, character) {
+        // XP sharing and awards to inactive characters must not change the active tier.
+        if (getActiveCharacterIndex(guildService.config, player._roles) != character.character_index) { return; }
+        const levelInfo = getCharacterLevelInfo(guildService.levels, character, guildService.config);
+        const tier = getTier(Number(levelInfo.level)).tier;
+        const newRole = guildService.config[`tier${tier}RoleId`];
+        const removeRoles = [1, 2, 3, 4].filter(value => value !== tier)
+            .map(value => guildService.config[`tier${value}RoleId`])
+            .filter(value => value && value !== "0" && value !== newRole && player._roles.includes(value));
+        if (removeRoles.length) { await player.roles.remove(removeRoles); }
+        if (newRole && newRole !== "0" && !player._roles.includes(newRole)) { await player.roles.add(newRole); }
+    }
+
 	module.exports = {
 		awardCXPs,
 		getActiveCharacterIndex,
 		getLevelInfo,
+		getCharacterLevelInfo,
+		getRequirementStatus,
+		syncCharacterTierRole,
 		getRoleMultiplier,
 		getTier,
 		getXp,

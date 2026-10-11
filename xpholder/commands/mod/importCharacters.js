@@ -1,17 +1,17 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { sqlInjectionCheck } = require('../../utils');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const { requirementMask } = require('../../progression');
 
 const { XPHOLDER_COLOUR, XPHOLDER_ICON_URL, DEV_SERVER_URL } = require("../../config.json");
 
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('import_characters_csv')
-        .setDescription('CSV Loads Characters')
+        .setDescription('CSV Loads Characters [ MOD ]')
     
         .addAttachmentOption(option => option
             .setName("csv_file")
-            .setDescription("File Created From /export_characters_csv [ OWNER ]")
+            .setDescription("File Created From /export_characters_csv")
             .setRequired(true))
 
         .addBooleanOption(option => option
@@ -25,8 +25,9 @@ module.exports = {
         VALIDATION
         ----------
         */
-        if (interaction.user.id != interaction.guild.ownerId) {
-            await interaction.editReply("Sorry, but you are not the owner of the server, and can not use this command.")
+        if (!guildService.isMod(interaction.member._roles) &&
+            interaction.user.id != interaction.guild.ownerId) {
+            await interaction.editReply("Only moderators and the server owner can use this command.");
             return;
         }
         /*
@@ -39,7 +40,7 @@ module.exports = {
         const response = await fetch(csvFile.url);
 
         const csvContent = await response.text();
-        const csvRows = csvContent.split('\n');
+        const csvRows = csvContent.replace(/\r\n/g, '\n').trimEnd().split('\n');
         const csvHeaders = csvRows[0].split(',');
 
         /*
@@ -82,6 +83,12 @@ module.exports = {
                 "xp": csvData["xp"]
             };
 
+            // Old exports omit this column. Preserve existing awards in that case;
+            // newly imported characters start without any requirements awarded.
+            if (csvData.level_up_requirements_met !== undefined) {
+                character.level_up_requirements_met = requirementMask(csvData.level_up_requirements_met);
+            }
+
             let existingCharacter = await guildService.getCharacter(`${character["character_id"]}`);
 
             if (!existingCharacter) {
@@ -89,6 +96,9 @@ module.exports = {
             }else{
                 await guildService.updateCharacterInfo(character);
                 await guildService.setCharacterXP(character);
+                if (character.level_up_requirements_met !== undefined) {
+                    await guildService.setCharacterRequirements(character);
+                }
             }
             
         }

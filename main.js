@@ -1,14 +1,14 @@
 const dotenv = require('dotenv');
 const fs = require('fs');
 
-const { Client, Collection, GatewayIntentBits, Partials, EmbedBuilder, InteractionType, ChannelType } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Partials, EmbedBuilder, InteractionType, ChannelType, Events, MessageFlags } = require('discord.js');
 const sqlite3 = require("sqlite3");
 
 const { guildService } = require("./xpholder/services/guild");
 const { sqlLite3DatabaseService } = require("./xpholder/database/sqlite");
 
-const { getActiveCharacterIndex, getXp, getRoleMultiplier, getLevelInfo, getTier, logCommand, logError } = require("./xpholder/utils");
-const { XPHOLDER_COLOUR, XPHOLDER_ICON_URL } = require("./xpholder/config.json")
+const { getActiveCharacterIndex, getXp, getRoleMultiplier, logCommand, logError } = require("./xpholder/utils");
+const { updateCharacterXpAndMessage } = require("./xpholder/services/characterXp");
 
 /*
 -----------------------
@@ -16,6 +16,8 @@ LOADING ENV VARS (.env)
 -----------------------
 */
 dotenv.config();
+fs.mkdirSync('./guilds', { recursive: true });
+const testGuildId = process.env.TEST_GUILD_ID;
 /*
 ---------------------------
 LOADING DISCORD PREMISSIONS
@@ -41,7 +43,6 @@ LOADING COMMANDS
 const commandsPath = [
     "everyone",
     "mod",
-    "owner",
 ];
 for (const path of commandsPath) {
     const commandCollection = fs.readdirSync(`./xpholder/commands/${path}`).filter(file => file.endsWith('.js'));
@@ -56,19 +57,20 @@ for (const path of commandsPath) {
 BOT COMMANDS
 ------------
 */
-client.once('ready', () => {
+client.once(Events.ClientReady, () => {
     //clearGuildCache();
-    console.log("ready");
-    console.log(client.commands);
+    console.log(`Ready: ${client.user.tag}; ${client.commands.size} commands loaded.`);
+    if (testGuildId) { console.log(`Testing restricted to guild ${testGuildId}.`); }
 });
 
 client.on('interactionCreate', async interaction => {
+    if (testGuildId && interaction.guildId !== testGuildId) { return; }
     /*
     -------------------------------------
     VALIDATIONS FOR INTERACTION EXECUTION
     -------------------------------------
     */
-    if (!interaction.isCommand() ||
+    if ((!interaction.isCommand() && !interaction.isAutocomplete()) ||
         !interaction.inGuild()) return;
     const command = client.commands.get(interaction.commandName);
     if (!command) return;
@@ -78,15 +80,18 @@ client.on('interactionCreate', async interaction => {
     const gService = new guildService(
         await new sqlLite3DatabaseService(sqlite3, `./guilds/${guildId}.db`)
     )
-    await gService.init();
-    if (!await gService.isRegistered() && command.data.name != "register") {
-        // Try Catch on the reply, because this is a restful call, and errors can be found
+    if (interaction.isAutocomplete()) {
         try {
-            await interaction.reply({
-                content: `Sorry, but your server is not registerd, please contact <@${interaction.guild.ownerId}> and ask them todo \`/register\`.`,
-                ephemeral: true
-            });
-        } catch (error) { };
+            // Typing suggestions must not run the XP schema migration on every keypress.
+            if (command.autocomplete && await gService.isRegistered()) {
+                await gService.factions.init();
+                gService.config = await gService.loadInit('config', 'name', 'value');
+                await command.autocomplete(gService, interaction);
+            } else { await interaction.respond([]); }
+        } catch (error) {
+            console.log(error);
+            if (!interaction.responded) { await interaction.respond([]); }
+        }
         return;
     }
     /*
@@ -95,21 +100,27 @@ client.on('interactionCreate', async interaction => {
     -----------------
     */
     try {
-        logCommand(interaction);
-    } catch (error) {
-        console.log(error);
-    }
-    try {
-        let is_public = !interaction.options.getBoolean("public");
-        await interaction.deferReply({ ephemeral: is_public });
+        const ephemeral = command.private || !interaction.options.getBoolean("public");
+        // Acknowledge before database work, including first-use schema migration.
+        await interaction.deferReply({ flags: ephemeral ? MessageFlags.Ephemeral : undefined });
+        await gService.init();
+        if (!gService.registered && command.data.name !== 'register') {
+            await interaction.editReply('This server is not registered. A staff member with Moderate Members, Manage Server, or Administrator permission can run `/register`.');
+            return;
+        }
+        // Faction inputs can identify hidden factions even when the reply is public.
+        if (!command.private && command.log !== false) { logCommand(interaction).catch(error => console.error('Command logging failed:', error.message)); }
         await command.execute(gService, interaction);
     } catch (error) {
         try {
-            logError(interaction, error);
+            if (!command.private && command.log !== false) { logError(interaction, error).catch(loggingError => console.error('Error logging failed:', loggingError.message)); }
         } catch (error) {
             console.log(error);
         }
         console.log(error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: 'Could not complete this command. Please try again.', embeds: [], components: [] }).catch(() => {});
+        }
     }
 });
 
@@ -120,6 +131,7 @@ XP PER POST
 */
 client.on('messageCreate', async message => {
     try {
+        if (testGuildId && message.guildId !== testGuildId) { return; }
 
         /*
         ----------
@@ -190,57 +202,6 @@ client.on('messageCreate', async message => {
 
     } catch (error) { console.log(error); }
 });
-
-async function updateCharacterXpAndMessage(guild, gService, character, xp, player){
-    try{
-        await gService.updateCharacterXP(character, xp);
-
-        const oldLevelInfo = getLevelInfo(gService.levels, character["xp"]);
-        const newLevelInfo = getLevelInfo(gService.levels, character["xp"] + xp);
-
-        if (oldLevelInfo["level"] != newLevelInfo["level"]) {
-            const newTier = getTier(newLevelInfo["level"]);
-
-            const tierRoles = []
-            for (let tierIndex = 1; tierIndex <= 4; tierIndex++){
-                if (tierIndex == newTier["tier"]){ continue; }
-                tierRoles.push(await guild.roles.fetch(gService.config[`tier${tierIndex}RoleId`]));
-            }
-
-            const newTierRole = await guild.roles.fetch(gService.config[`tier${newTier["tier"]}RoleId`]);
-
-            try{
-                const updatedPlayer = await player.roles.remove(tierRoles);
-                await updatedPlayer.roles.add(newTierRole);
-            }catch(error){
-                console.log(error);
-            }
-            
-
-            let awardChannel;
-            try {
-                awardChannel = await guild.channels.fetch(gService.config["levelUpChannelId"]);
-            } catch (error) { return; }
-
-            let levelUpEmbed = new EmbedBuilder()
-                .setTitle(`${character["name"]} Leveled Up`)
-                .setFields(
-                    { name: "Level Up!", value: `${oldLevelInfo["level"]} --> **${newLevelInfo["level"]}**`, inline: true },
-                    { name: "Total Character XP", value: `${Math.floor(character["xp"] + xp)}`, inline: true },
-                    { name: "Tier", value: `<@&${gService.config[`tier${newTier["tier"]}RoleId`]}>`, inline: true }
-                )
-                .setThumbnail((character["picture_url"] != "" && character["picture_url"] !== "null")? character["picture_url"] : XPHOLDER_ICON_URL )
-                .setColor(XPHOLDER_COLOUR)
-                .setFooter({ text: "You can view your characters with /xp" })
-
-            if (character["sheet_url"] != "") {
-                levelUpEmbed.setURL(character["sheet_url"]);
-            }
-
-            awardChannel.send({ content: `${player}`, embeds: [levelUpEmbed] });
-        }
-    }catch(error){ console.log(error) }
-}
 
 /*
 ---------------------

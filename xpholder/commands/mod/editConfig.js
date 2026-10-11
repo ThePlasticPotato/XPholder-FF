@@ -3,7 +3,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 module.exports = {
     data: new SlashCommandBuilder()
         .setName('edit_config')
-        .setDescription('Changes Config Table In Server Database! [ OWNER ]')
+        .setDescription('Changes Config Table In Server Database! [ MOD ]')
 
         .addStringOption(option => option
             .setName("approve_message")
@@ -29,6 +29,15 @@ module.exports = {
             .setName("moderation_role")
             .setDescription("A Role Which Allows Users To Use The Mod Roles")
             .setRequired(false))
+
+        .addStringOption(option => option
+            .setName("level_up_requirements")
+            .setDescription("Require moderator-awarded level-up requirements (default: On)")
+            .addChoices({ name: "On", value: "on" }, { name: "Off", value: "off" }))
+        .addStringOption(option => option
+            .setName("level_up_requirement_mode")
+            .setDescription("Which level-ups need a requirement (default: Tier boundaries)")
+            .addChoices({ name: "Tier boundaries", value: "tiers" }, { name: "Every level", value: "all" }))
 
         .addIntegerOption(option => option
             .setName("number_of_characters")
@@ -106,8 +115,9 @@ module.exports = {
         VALIDATION
         ----------
         */
-        if (interaction.user.id != interaction.guild.ownerId) {
-            await interaction.editReply("Sorry, but you are not the owner of the server, and can not use this command.")
+        if (!guildService.isMod(interaction.member._roles) &&
+            interaction.user.id != interaction.guild.ownerId) {
+            await interaction.editReply("Only moderators and the server owner can use this command.");
             return;
         }
 
@@ -124,6 +134,8 @@ module.exports = {
         const levelUpMessage = interaction.options.getString("level_up_message");
         const levelUpChannel = interaction.options.getChannel("level_up_channel");
         const moderationRole = interaction.options.getRole("moderation_role");
+        const levelUpRequirements = interaction.options.getString("level_up_requirements");
+        const levelUpRequirementMode = interaction.options.getString("level_up_requirement_mode");
         const numberOfCharacters = interaction.options.getInteger("number_of_characters");
         const roleBonus = interaction.options.getString("role_bonus");
         const tier1Role = interaction.options.getRole("tier_1_role");
@@ -147,6 +159,8 @@ module.exports = {
         if (levelUpMessage) { config["levelUpMessage"] = levelUpMessage; }
         if (levelUpChannel) { config["levelUpChannelId"] = levelUpChannel.id; }
         if (moderationRole) { config["moderationRoleId"] = moderationRole.id; }
+        if (levelUpRequirements) { config.levelUpRequirementsEnabled = levelUpRequirements; }
+        if (levelUpRequirementMode) { config.levelUpRequirementMode = levelUpRequirementMode; }
         if (numberOfCharacters) {
             for (let index = 1; index <= MAX_CHARS; index++) {
                 if (index <= numberOfCharacters) {
