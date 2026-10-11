@@ -3,24 +3,37 @@ const { XPHOLDER_COLOUR } = require('./config.json');
 const { FACTION_RANKS, NEGATIVE_FACTION_RANKS, getFactionStanding } = require('./factionRanks');
 
 function isFactionModerator(service, interaction) {
-    return service.isMod(interaction.member._roles) || interaction.user.id === interaction.guild.ownerId;
+    const roles = interaction.member?._roles ?? (Array.isArray(interaction.member?.roles) ? interaction.member.roles : []);
+    return interaction.user.id === interaction.guild.ownerId || roles.includes(service.config?.moderationRoleId);
+}
+
+function factionViewer(service, interaction) {
+    return { playerId: interaction.user.id, moderator: isFactionModerator(service, interaction) };
 }
 
 async function factionAutocomplete(service, interaction) {
     const query = interaction.options.getFocused().trim().normalize('NFKC').toLowerCase();
-    const factions = await service.factions.list();
+    const factions = await service.factions.list(null, factionViewer(service, interaction));
     await interaction.respond(factions.filter(faction => faction.name_key.includes(query)).slice(0, 25)
         .map(faction => ({ name: faction.name, value: `faction:${faction.faction_id}` })));
+}
+
+async function moderatorFactionAutocomplete(service, interaction) {
+    if (!isFactionModerator(service, interaction)) { await interaction.respond([]); return; }
+    await factionAutocomplete(service, interaction);
 }
 
 function factionOption(option) {
     return option.setName('faction').setDescription('Choose a registered faction or enter its exact name').setAutocomplete(true);
 }
 
-function buildFactionEmbed(faction) {
+function buildFactionEmbed(faction, fields = []) {
     const embed = new EmbedBuilder().setTitle(faction.name).setDescription(faction.description)
         .setColor(XPHOLDER_COLOUR);
     if (faction.image_url) { embed.setImage(faction.image_url); }
+    for (const section of faction.info_sections || []) { embed.addFields({ name: section.title, value: section.text }); }
+    embed.addFields(fields);
+    if (faction.primary_dm_id) { embed.addFields({ name: 'Primary DM', value: `<@${faction.primary_dm_id}>` }); }
     return embed;
 }
 
@@ -52,7 +65,7 @@ function renownProgressText(renown) {
 
 function buildRenownEmbed(service, character, faction) {
     const standing = getFactionStanding(service.levels, character, faction, service.config);
-    return buildFactionEmbed(faction).addFields(
+    return buildFactionEmbed(faction, [
         { name: 'Character', value: character.name, inline: true },
         { name: 'Renown', value: String(standing.renown), inline: true },
         { name: 'Rank', value: standing.rank, inline: true },
@@ -62,7 +75,7 @@ function buildRenownEmbed(service, character, faction) {
         { name: 'Solo Challenges', value: String(standing.soloChallenges), inline: true },
         { name: standing.nextRank ? `Next Rank: ${standing.nextRank.name}` : 'Highest Rank',
             value: standing.nextRank ? standing.missing.map(item => `• ${item}`).join('\n') : 'All Champion requirements are met.' }
-    );
+    ]);
 }
 
 function renownComponents(factions, index) {
@@ -84,4 +97,5 @@ function renownComponents(factions, index) {
     return [new ActionRowBuilder().addComponents(select), new ActionRowBuilder().addComponents(buttons)];
 }
 
-module.exports = { isFactionModerator, factionAutocomplete, factionOption, buildFactionEmbed, buildRenownEmbed, renownComponents, renownProgressBar };
+module.exports = { isFactionModerator, factionViewer, factionAutocomplete, moderatorFactionAutocomplete,
+    factionOption, buildFactionEmbed, buildRenownEmbed, renownComponents, renownProgressBar };

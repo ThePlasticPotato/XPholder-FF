@@ -80,7 +80,7 @@ function buildGettingStartedEmbed() {
             { name: "How To Award XP Manually", value: "There are two ways to award xp manually. The first, is a mod of the server can use **/award_xp** , and fill out the information on the player they are awarding. The second, is that players can use **/request_xp** and await for a mod to approve their request ( there is a server option to auto approve all requests in **/edit_config** )", inline: false },
         )
         .addFields({ name: "Level-Up Requirements", value: "By default, entering levels 5, 11, and 17 requires a moderator award. XP keeps accumulating while blocked. Moderators use **/award_level_up** with the player, character, and level being unlocked. Moderators can turn requirements off or require them at every level with **/edit_config**. View your status with **/xp**." })
-        .addFields({ name: "Factions and Renown", value: "Use **/factions** to list registered factions or select one for details. Use **/renown** to browse your character's relations and renown bars. Negative renown fills a continuous red bar from the right: Distrusted at -1 to -14, Nemesis at -15 or below. Moderators can **/register_faction**, **/edit_faction**, and **/award_renown**. Awards can add or subtract renown and record completed faction quests or solo challenges. Positive ranks require enough renown, cumulative completions, and the character's unlocked tier. Factions are relations, not memberships." })
+        .addFields({ name: "Factions and Renown", value: "Use **/factions** for faction details and **/renown** for your active character's relations. Factions start hidden from players. Moderators can reveal one with **/faction_visibility** or set **fully_public** with **/register_faction** or **/edit_faction**. A renown award permanently reveals the faction to that player across all their characters. Replies are private by default; use **public:true** on **/renown**, **/factions**, or **/award_renown** to share them in the channel. Set **primary_dm** with registration/editing; use **/faction_info add**, **edit**, or **remove** for extra sections, and **/delete_faction** to delete a faction. **/award_renown** changes renown and quest/solo completions. Positive ranks also require the character's tier. Distrusted is -1 to -14; Nemesis is -15 or below." })
         .setFooter({ text: `Like the bot? Have questions? Click 'Getting Started' to visit the dev server!` })
         .setThumbnail(XPHOLDER_ICON_URL)
         .setColor(XPHOLDER_COLOUR)
@@ -117,7 +117,7 @@ function buildXpPerPostEmbed() {
         .setFooter({ text: `Like the bot? Have questions? Click 'XP Per Post' to visit the dev server!` })
         .setThumbnail(XPHOLDER_ICON_URL)
         .setColor(XPHOLDER_COLOUR)
-        .setURL(DEV_SERVER_URL);
+        .setURL(DEV_SERVER_URL || null);
 }
 
 function createButtonEvents(interaction, replyMessage, helpEmbed, embedIndex) {

@@ -1,7 +1,7 @@
 const dotenv = require('dotenv');
 const fs = require('fs');
 
-const { Client, Collection, GatewayIntentBits, Partials, EmbedBuilder, InteractionType, ChannelType, Events } = require('discord.js');
+const { Client, Collection, GatewayIntentBits, Partials, EmbedBuilder, InteractionType, ChannelType, Events, MessageFlags } = require('discord.js');
 const sqlite3 = require("sqlite3");
 
 const { guildService } = require("./xpholder/services/guild");
@@ -85,6 +85,7 @@ client.on('interactionCreate', async interaction => {
             // Typing suggestions must not run the XP schema migration on every keypress.
             if (command.autocomplete && await gService.isRegistered()) {
                 await gService.factions.init();
+                gService.config = await gService.loadInit('config', 'name', 'value');
                 await command.autocomplete(gService, interaction);
             } else { await interaction.respond([]); }
         } catch (error) {
@@ -93,38 +94,33 @@ client.on('interactionCreate', async interaction => {
         }
         return;
     }
-    await gService.init();
-    if (!await gService.isRegistered() && command.data.name != "register") {
-        // Try Catch on the reply, because this is a restful call, and errors can be found
-        try {
-            await interaction.reply({
-                content: 'This server is not registered. A staff member with Moderate Members, Manage Server, or Administrator permission can run `/register`.',
-                ephemeral: true
-            });
-        } catch (error) { };
-        return;
-    }
     /*
     -----------------
     EXECUTING COMMAND
     -----------------
     */
     try {
-        logCommand(interaction).catch(error => console.error('Command logging failed:', error.message));
-    } catch (error) {
-        console.log(error);
-    }
-    try {
-        let is_public = !interaction.options.getBoolean("public");
-        await interaction.deferReply({ ephemeral: is_public });
+        const ephemeral = command.private || !interaction.options.getBoolean("public");
+        // Acknowledge before database work, including first-use schema migration.
+        await interaction.deferReply({ flags: ephemeral ? MessageFlags.Ephemeral : undefined });
+        await gService.init();
+        if (!gService.registered && command.data.name !== 'register') {
+            await interaction.editReply('This server is not registered. A staff member with Moderate Members, Manage Server, or Administrator permission can run `/register`.');
+            return;
+        }
+        // Faction inputs can identify hidden factions even when the reply is public.
+        if (!command.private && command.log !== false) { logCommand(interaction).catch(error => console.error('Command logging failed:', error.message)); }
         await command.execute(gService, interaction);
     } catch (error) {
         try {
-            logError(interaction, error).catch(loggingError => console.error('Error logging failed:', loggingError.message));
+            if (!command.private && command.log !== false) { logError(interaction, error).catch(loggingError => console.error('Error logging failed:', loggingError.message)); }
         } catch (error) {
             console.log(error);
         }
         console.log(error);
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply({ content: 'Could not complete this command. Please try again.', embeds: [], components: [] }).catch(() => {});
+        }
     }
 });
 

@@ -1,13 +1,14 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { getActiveCharacterIndex } = require('../../utils');
-const { factionAutocomplete, factionOption, buildRenownEmbed, renownComponents } = require('../../factionUi');
+const { factionAutocomplete, factionOption, buildRenownEmbed, renownComponents, factionViewer } = require('../../factionUi');
 
 module.exports = {
+    log: false,
     data: new SlashCommandBuilder().setName('renown').setDescription('Browse a character\'s relations and ranks with this server\'s factions')
         .addIntegerOption(option => option.setName('character').setDescription('Character to view; defaults to the active character').setMinValue(1).setMaxValue(10))
         .addStringOption(factionOption)
         .addUserOption(option => option.setName('player').setDescription('View another player\'s character'))
-        .addBooleanOption(option => option.setName('public').setDescription('Show this command to everyone?')),
+        .addBooleanOption(option => option.setName('public').setDescription('Share factions visible to you with everyone in this channel?')),
     autocomplete: factionAutocomplete,
     async execute(service, interaction) {
         const user = interaction.options.getUser('player') || interaction.user;
@@ -16,14 +17,14 @@ module.exports = {
         const characterId = `${user.id}-${characterIndex}`;
         let character = await service.getCharacter(characterId);
         if (!character) { await interaction.editReply('That character does not exist. A moderator can create one with /approve_player.'); return; }
-        let factions = await service.factions.list(characterId);
-        if (!factions.length) { await interaction.editReply('No factions are registered in this server yet. A moderator can use /register_faction.'); return; }
+        let factions = await service.factions.list(characterId, factionViewer(service, interaction));
+        if (!factions.length) { await interaction.editReply('No factions are visible to you.'); return; }
         let index = 0;
         const selection = interaction.options.getString('faction');
         if (selection) {
-            const faction = await service.factions.find(selection);
+            const faction = await service.factions.find(selection, factionViewer(service, interaction));
             index = factions.findIndex(item => item.faction_id === faction?.faction_id);
-            if (index < 0) { await interaction.editReply('That faction is not registered in this server.'); return; }
+            if (index < 0) { await interaction.editReply('That faction is not available.'); return; }
         }
         const render = () => ({
             embeds: [buildRenownEmbed(service, character, factions[index])
@@ -46,10 +47,12 @@ module.exports = {
                 const previousId = factions[index].faction_id;
                 await service.init();
                 character = await service.getCharacter(characterId);
-                factions = await service.factions.list(characterId);
+                factions = await service.factions.list(characterId, factionViewer(service, {
+                    user: interaction.user, guild: interaction.guild, member: component.member ?? interaction.member,
+                }));
                 if (!character || !factions.length) {
                     collector.stop();
-                    await interaction.editReply({ content: !character ? 'This character has been retired.' : 'No factions are registered.', embeds: [], components: [] });
+                    await interaction.editReply({ content: !character ? 'This character has been retired.' : 'No factions are visible to you.', embeds: [], components: [] });
                     return;
                 }
                 index = Math.max(0, factions.findIndex(faction => faction.faction_id === previousId));

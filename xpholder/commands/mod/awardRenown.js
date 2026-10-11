@@ -1,8 +1,9 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
-const { isFactionModerator, factionAutocomplete, factionOption, buildRenownEmbed } = require('../../factionUi');
+const { isFactionModerator, moderatorFactionAutocomplete, factionOption, buildRenownEmbed } = require('../../factionUi');
 const { getFactionStanding } = require('../../factionRanks');
 
 module.exports = {
+    log: false,
     data: new SlashCommandBuilder().setName('award_renown').setDescription('Award faction renown or completed rank requirements [ MOD ]')
         .addUserOption(option => option.setName('player').setDescription('Player receiving the award').setRequired(true))
         .addIntegerOption(option => option.setName('character').setDescription('Character receiving the award').setMinValue(1).setMaxValue(10).setRequired(true))
@@ -11,8 +12,8 @@ module.exports = {
         .addIntegerOption(option => option.setName('quests').setDescription('Completed faction quests to add; negative values correct mistakes').setMinValue(-1000).setMaxValue(1000))
         .addIntegerOption(option => option.setName('solo_challenges').setDescription('Completed solo challenges to add; negative values correct mistakes').setMinValue(-1000).setMaxValue(1000))
         .addStringOption(option => option.setName('memo').setDescription('Reason for this award or correction').setMaxLength(1000))
-        .addBooleanOption(option => option.setName('public').setDescription('Show this command to everyone?')),
-    autocomplete: factionAutocomplete,
+        .addBooleanOption(option => option.setName('public').setDescription('Show this award to everyone in this channel?')),
+    autocomplete: moderatorFactionAutocomplete,
     async execute(service, interaction) {
         if (!isFactionModerator(service, interaction)) {
             await interaction.editReply('Only moderators and the server owner can award renown or rank requirements.');

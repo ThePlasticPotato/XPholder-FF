@@ -1,25 +1,26 @@
 const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { XPHOLDER_COLOUR } = require('../../config.json');
-const { factionAutocomplete, factionOption, buildFactionEmbed } = require('../../factionUi');
+const { factionAutocomplete, factionOption, buildFactionEmbed, factionViewer } = require('../../factionUi');
 
 const PAGE_SIZE = 10;
 
 module.exports = {
+    log: false,
     data: new SlashCommandBuilder().setName('factions').setDescription('List this server\'s registered factions or view a faction\'s details')
         .addStringOption(factionOption)
-        .addBooleanOption(option => option.setName('public').setDescription('Show this command to everyone?')),
+        .addBooleanOption(option => option.setName('public').setDescription('Share factions visible to you with everyone in this channel?')),
     autocomplete: factionAutocomplete,
     async execute(service, interaction) {
         const selection = interaction.options.getString('faction');
         if (selection) {
-            const faction = await service.factions.find(selection);
-            if (!faction) { await interaction.editReply('That faction is not registered in this server.'); return; }
+            const faction = await service.factions.find(selection, factionViewer(service, interaction));
+            if (!faction) { await interaction.editReply('That faction is not available.'); return; }
             await interaction.editReply({ embeds: [buildFactionEmbed(faction)], allowedMentions: { parse: [] } });
             return;
         }
-        let factions = await service.factions.list();
-        if (!factions.length) { await interaction.editReply('No factions are registered in this server yet. A moderator can use /register_faction.'); return; }
+        let factions = await service.factions.list(null, factionViewer(service, interaction));
+        if (!factions.length) { await interaction.editReply('No factions are visible to you.'); return; }
         let page = 0;
         const render = () => {
             const pages = Math.ceil(factions.length / PAGE_SIZE);
@@ -49,10 +50,13 @@ module.exports = {
             const acknowledged = component.deferUpdate().then(() => true, () => false);
             queue = queue.then(async () => {
                 if (!await acknowledged || expired) { return; }
-                factions = await service.factions.list();
+                await service.init();
+                factions = await service.factions.list(null, factionViewer(service, {
+                    user: interaction.user, guild: interaction.guild, member: component.member ?? interaction.member,
+                }));
                 if (!factions.length) {
                     collector.stop();
-                    await interaction.editReply({ content: 'No factions are registered.', embeds: [], components: [] });
+                    await interaction.editReply({ content: 'No factions are visible to you.', embeds: [], components: [] });
                     return;
                 }
                 const lastPage = Math.ceil(factions.length / PAGE_SIZE) - 1;
