@@ -5,7 +5,7 @@ const fs = require('fs');
 const dotenv = require('dotenv');
 dotenv.config();
 
-const {CLIENT_ID, TESTING_SERVER_ID} = require("./xpholder/config.json");
+const {CLIENT_ID, COMMAND_GUILD_ID} = require("./xpholder/config.json");
 
 
 const commands = [];
@@ -31,7 +31,7 @@ const rest = new REST({ version: '9' }).setToken(process.env.DISCORD_TOKEN);
 		console.log('Started refreshing application (/) commands.');
 
 		await rest.put(
-			Routes.applicationCommands(CLIENT_ID, TESTING_SERVER_ID),
+			Routes.applicationGuildCommands(CLIENT_ID, COMMAND_GUILD_ID),
 			{ body: commands },
 		);
 
