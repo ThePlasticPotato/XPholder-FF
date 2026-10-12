@@ -9,6 +9,7 @@ const { sqlLite3DatabaseService } = require("./xpholder/database/sqlite");
 
 const { getActiveCharacterIndex, getXp, getRoleMultiplier, logCommand, logError } = require("./xpholder/utils");
 const { updateCharacterXpAndMessage } = require("./xpholder/services/characterXp");
+const { HomebrewVoting } = require('./xpholder/services/homebrewVoting');
 
 /*
 -----------------------
@@ -35,6 +36,13 @@ const client = new Client({
     partials: [Partials.Channel]
 });
 client.commands = new Collection();
+client.homebrewVoting = new HomebrewVoting(client, { testGuildId });
+client.on(Events.ThreadCreate, (thread, newlyCreated) => {
+    client.homebrewVoting.onThreadCreate(thread, newlyCreated).catch(error => client.homebrewVoting.report(error, thread.id));
+});
+client.on(Events.ThreadUpdate, (oldThread, thread) => {
+    client.homebrewVoting.onThreadUpdate(oldThread, thread).catch(error => client.homebrewVoting.report(error, thread.id));
+});
 /*
 ----------------
 LOADING COMMANDS
@@ -61,6 +69,7 @@ client.once(Events.ClientReady, () => {
     //clearGuildCache();
     console.log(`Ready: ${client.user.tag}; ${client.commands.size} commands loaded.`);
     if (testGuildId) { console.log(`Testing restricted to guild ${testGuildId}.`); }
+    client.homebrewVoting.start().catch(error => client.homebrewVoting.report(error, 'startup'));
 });
 
 client.on('interactionCreate', async interaction => {
