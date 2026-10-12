@@ -13,14 +13,16 @@ function postId(value, interaction) {
 module.exports = {
     private: true,
     data: new SlashCommandBuilder().setName('verify_homebrew').setDescription('Check a homebrew submission vote now [ MOD / HOMEBREW TEAM ]')
-        .addStringOption(option => option.setName('post').setDescription('Forum post link or thread ID; defaults to the current post')),
+        .addStringOption(option => option.setName('post').setDescription('Forum post link or thread ID; defaults to the current post'))
+        .addBooleanOption(option => option.setName('skip_wait').setDescription('Use the 24-hour vote threshold now (3-vote lead)')),
     async execute(service, interaction) {
         const roles = interaction.member?._roles ?? (Array.isArray(interaction.member?.roles) ? interaction.member.roles : []);
         const allowed = roles.includes(HOMEBREW_VOTING.teamRole) || service.isMod(roles) ||
             interaction.user.id === interaction.guild.ownerId || interaction.memberPermissions?.has(PermissionFlagsBits.ManageThreads);
         if (!allowed) { await interaction.editReply('Only moderators and the Homebrew Team can verify submissions.'); return; }
         try {
-            const poll = await interaction.client.homebrewVoting.verify(postId(interaction.options.getString('post'), interaction));
+            const poll = await interaction.client.homebrewVoting.verify(postId(interaction.options.getString('post'), interaction),
+                { skipWait: interaction.options.getBoolean('skip_wait') ?? false });
             const tally = poll.votes ? `👍 ${poll.votes.up} · 👎 ${poll.votes.down}\n` : '';
             const status = { approved: 'Approved by vote.', denied: 'Denied by vote.', timed_out: 'Timed out.',
                 manual: 'A verdict was set manually. Automatic voting has stopped.', cancelled: 'Automatic voting has stopped.' }[poll.state] ||

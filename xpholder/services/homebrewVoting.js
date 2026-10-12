@@ -16,9 +16,9 @@ const terminal = state => !['initializing', 'polling', 'deciding'].includes(stat
 const missing = error => [10003, 10008].includes(error.code);
 const sameTags = (a, b) => a.length === b.length && a.every(tag => b.includes(tag));
 
-function evaluateVote(poll, votes, now, manual = false) {
+function evaluateVote(poll, votes, now, { manual = false, skipWait = false } = {}) {
     const balance = votes.up - votes.down;
-    const daily = now >= poll.nextCheckAt || (manual && now >= poll.createdAt + DAY);
+    const daily = skipWait || now >= poll.nextCheckAt || (manual && now >= poll.createdAt + DAY);
     if (Math.abs(balance) >= 6 || (daily && Math.abs(balance) >= 3)) {
         return balance > 0 ? 'approved' : 'denied';
     }
@@ -204,11 +204,36 @@ class HomebrewVoting {
         return users;
     }
 
+    async removeUncountedVotes(thread, reactions, eligible) {
+        const removals = reactions.flatMap(([reaction, users]) => [...users.keys()]
+            .filter(id => id !== this.client.user.id && !eligible.has(id))
+            .map(id => ({ reaction, id })));
+        if (!removals.length) return;
+        thread = await this.fetchThread(thread.id);
+        if (this.verdict(thread) || !thread.appliedTags.includes(this.config.pollingTag) || this.overrides.has(thread.id)) return;
+        for (const { reaction, id } of removals) {
+            if (this.overrides.has(thread.id)) return;
+            try {
+                await reaction.users.remove(id);
+            } catch (error) {
+                if (missing(error)) throw error;
+                if (error.code === 10014) continue; // The reaction was already removed.
+                // Cleanup must not prevent a verdict based on eligible votes.
+                const failure = error.code === 50013
+                    ? new Error('Removing uncounted votes requires Manage Messages permission in homebrew-submission.') : error;
+                this.report(failure, `clean reactions on ${thread.id}`);
+                return; // Retry at the next check rather than repeating a failing request for every voter.
+            }
+        }
+    }
+
     async countVotes(thread) {
         const message = await thread.fetchStarterMessage({ force: true });
         if (!message) throw new Error('The forum starter message is unavailable.');
-        const up = await this.reactionUsers(message.reactions.cache.get('👍'));
-        const down = await this.reactionUsers(message.reactions.cache.get('👎'));
+        const upReaction = message.reactions.cache.get('👍');
+        const downReaction = message.reactions.cache.get('👎');
+        const up = await this.reactionUsers(upReaction);
+        const down = await this.reactionUsers(downReaction);
         const eligible = new Set();
         for (const [id, user] of new Map([...up, ...down])) {
             if (user.bot || id === this.client.user.id) continue;
@@ -219,11 +244,13 @@ class HomebrewVoting {
                 if (error.code !== 10007) throw error; // Left the server; other API failures must not become a zero vote.
             }
         }
+        // Resolve every voter first; a failed role lookup must never cause a valid vote to be deleted.
+        await this.removeUncountedVotes(thread, [[upReaction, up], [downReaction, down]], eligible);
         return { up: [...up.keys()].filter(id => eligible.has(id)).length,
             down: [...down.keys()].filter(id => eligible.has(id)).length };
     }
 
-    async check(id, manual = false) {
+    async check(id, options = {}) {
         let poll = await this.store.get(id);
         if (!poll || terminal(poll.state)) return poll;
         try {
@@ -243,7 +270,7 @@ class HomebrewVoting {
                 return await this.cancel(poll, thread);
             }
             const now = this.now();
-            const result = evaluateVote(poll, poll.votes, now, manual);
+            const result = evaluateVote(poll, poll.votes, now, options);
             if (result) {
                 poll.state = 'deciding';
                 poll.result = result;
@@ -371,7 +398,7 @@ class HomebrewVoting {
         return this.ticking;
     }
 
-    async verify(id) {
+    async verify(id, { skipWait = false } = {}) {
         if (!this.enabled) throw new Error('Homebrew voting is disabled for this test server.');
         await this.ready();
         return this.serial(id, async () => {
@@ -380,7 +407,7 @@ class HomebrewVoting {
                 if (!thread.appliedTags.includes(this.config.pollingTag)) throw new Error('This post is not being polled.');
                 await this.track(thread, true);
             }
-            return this.check(id, true);
+            return this.check(id, { manual: true, skipWait });
         });
     }
 }
