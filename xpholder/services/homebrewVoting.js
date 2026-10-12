@@ -164,6 +164,22 @@ class HomebrewVoting {
             await this.setTags(thread, [...thread.appliedTags, this.config.pollingTag]);
         }
         poll.tagApplied = true;
+        // Keep initialization pending until the opening reply is delivered, including across restarts.
+        poll.openingAt = poll.openingAt ?? this.now();
+        await this.store.put(poll);
+        const content = `<@&${this.config.teamRole}>\nPoll opened.`;
+        poll.openingMessageId = poll.openingMessageId || await this.findMessage(thread, content, poll.openingAt);
+        thread = await this.fetchThread(poll.id);
+        if (this.verdict(thread) || !thread.appliedTags.includes(this.config.pollingTag) || this.overrides.has(poll.id)) {
+            return this.cancel(poll, thread);
+        }
+        if (!poll.openingMessageId) {
+            if (thread.archived) await thread.setArchived(false, 'Announce homebrew poll opening');
+            const opening = await thread.send({ content, reply: { messageReference: poll.id },
+                nonce: `${poll.id}-open`, enforceNonce: true,
+                allowedMentions: { parse: [], users: [], roles: [this.config.teamRole], repliedUser: false } });
+            poll.openingMessageId = opening.id;
+        }
         poll.state = 'polling';
         await this.store.put(poll);
         return poll;
