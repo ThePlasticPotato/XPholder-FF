@@ -183,12 +183,13 @@ client.on('messageCreate', async message => {
         if (!character) { return; }
 
 
-        let channel = await guild.channels.fetch(message.channelId);
-
-	if (channel.name.includes('ooc')) {return;}
-        while (channel) {
-            if (channel.id in gService.channels) { break; }
-            channel = await guild.channels.fetch(channel.parentId);
+        let channel;
+        let currentChannel = await guild.channels.fetch(message.channelId);
+        while (currentChannel) {
+            if (currentChannel.name.toLowerCase().endsWith('-ooc')) { return; }
+            if (!channel && currentChannel.id in gService.channels) { channel = currentChannel; }
+            // Check parents too, even when a thread has its own XP setting.
+            currentChannel = currentChannel.parentId ? await guild.channels.fetch(currentChannel.parentId) : null;
         }
 
         if (!channel) { return; }
