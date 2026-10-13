@@ -349,6 +349,15 @@ class HomebrewVoting {
         }
         poll.state = poll.result;
         await this.store.put(poll);
+        if (poll.result === 'timed_out') {
+            // Save completion before closing so a moderator's later reopen is never undone.
+            try {
+                thread = await this.fetchThread(poll.id);
+                if (!this.overrides.has(poll.id) && this.verdict(thread) === 'timed_out' && !thread.archived) {
+                    await thread.setArchived(true, 'Homebrew review timed out');
+                }
+            } catch (error) { this.report(error, `close timed-out post ${poll.id}`); }
+        }
         return poll;
     }
 
