@@ -236,7 +236,7 @@ class HomebrewVoting {
         const down = await this.reactionUsers(downReaction);
         const eligible = new Set();
         for (const [id, user] of new Map([...up, ...down])) {
-            if (user.bot || id === this.client.user.id) continue;
+            if (user.bot || id === this.client.user.id || id === message.author.id) continue;
             try {
                 const member = await thread.guild.members.fetch({ user: id, force: true });
                 if (member.roles.cache.has(this.config.teamRole)) eligible.add(id);
