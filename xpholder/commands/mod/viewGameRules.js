@@ -150,7 +150,7 @@ async function buildChannelEmbed(channelObj, interaction, guildService) {
         .setFooter({ text: `Dont Like What You See? Try : /edit_channels` })
         .setThumbnail(XPHOLDER_ICON_URL)
         .setColor(XPHOLDER_COLOUR)
-        .setURL(DEV_SERVER_URL);
+        .setURL(DEV_SERVER_URL || null);
 
     for (const [channelId, xpPerPost] of Object.entries(channelObj)) {
         let channel;
@@ -172,7 +172,7 @@ function buildLevelEmbed(levelObj) {
         .setFooter({ text: `Dont Like What You See? Try : /edit_levels` })
         .setThumbnail(XPHOLDER_ICON_URL)
         .setColor(XPHOLDER_COLOUR)
-        .setURL(DEV_SERVER_URL);
+        .setURL(DEV_SERVER_URL || null);
 
     let requiredXp = 0;
     for (const [level, xpToNextLevel] of Object.entries(levelObj)) {
@@ -189,7 +189,7 @@ async function buildRoleEmbed(roleObj, interaction, guildService) {
         .setFooter({ text: `Dont Like What You See? Try : /edit_roles` })
         .setThumbnail(XPHOLDER_ICON_URL)
         .setColor(XPHOLDER_COLOUR)
-        .setURL(DEV_SERVER_URL);
+        .setURL(DEV_SERVER_URL || null);
 
     for (const [roleId, bonus] of Object.entries(roleObj)) {
         const role = await interaction.guild.roles.fetch(roleId)

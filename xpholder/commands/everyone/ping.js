@@ -19,7 +19,7 @@ module.exports = {
             .setFields({ inline: true, name: "Speed", value: `${delta} ms` },)
             .setFooter({ text: `Like the bot? Click 'Pong' to visit the dev server!` })
             .setColor(XPHOLDER_COLOUR)
-            .setURL(DEV_SERVER_URL)
+            .setURL(DEV_SERVER_URL || null)
 
         await interaction.editReply({ embeds: [pingEmbed] });
     },
