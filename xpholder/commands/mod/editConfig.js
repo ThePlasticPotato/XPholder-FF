@@ -39,6 +39,27 @@ module.exports = {
             .setDescription("Which level-ups need a requirement (default: Tier boundaries)")
             .addChoices({ name: "Tier boundaries", value: "tiers" }, { name: "Every level", value: "all" }))
 
+        .addStringOption(option => option
+            .setName("homebrew_auto_verdicts")
+            .setDescription("Automatically approve or deny homebrew by vote (default: Off)")
+            .addChoices({ name: "On", value: "on" }, { name: "Off", value: "off" }))
+        .addIntegerOption(option => option
+            .setName("homebrew_approve_lead")
+            .setDescription("Thumbs-up lead needed for approval at daily checks or skip_wait (default: 3)")
+            .setMinValue(1))
+        .addIntegerOption(option => option
+            .setName("homebrew_deny_lead")
+            .setDescription("Thumbs-down lead needed for denial at daily checks or skip_wait (default: 3)")
+            .setMinValue(1))
+        .addIntegerOption(option => option
+            .setName("homebrew_early_approve_lead")
+            .setDescription("Thumbs-up lead needed for approval without waiting 24 hours (default: 6)")
+            .setMinValue(1))
+        .addIntegerOption(option => option
+            .setName("homebrew_early_deny_lead")
+            .setDescription("Thumbs-down lead needed for denial without waiting 24 hours (default: 6)")
+            .setMinValue(1))
+
         .addIntegerOption(option => option
             .setName("number_of_characters")
             .setDescription("The Amount Of Characters A Person Can Have ( 1 -> 10 )")
@@ -136,6 +157,7 @@ module.exports = {
         const moderationRole = interaction.options.getRole("moderation_role");
         const levelUpRequirements = interaction.options.getString("level_up_requirements");
         const levelUpRequirementMode = interaction.options.getString("level_up_requirement_mode");
+        const homebrewAutoVerdicts = interaction.options.getString("homebrew_auto_verdicts");
         const numberOfCharacters = interaction.options.getInteger("number_of_characters");
         const roleBonus = interaction.options.getString("role_bonus");
         const tier1Role = interaction.options.getRole("tier_1_role");
@@ -161,6 +183,21 @@ module.exports = {
         if (moderationRole) { config["moderationRoleId"] = moderationRole.id; }
         if (levelUpRequirements) { config.levelUpRequirementsEnabled = levelUpRequirements; }
         if (levelUpRequirementMode) { config.levelUpRequirementMode = levelUpRequirementMode; }
+        if (homebrewAutoVerdicts) { config.homebrewAutoVerdicts = homebrewAutoVerdicts; }
+        for (const [option, key] of Object.entries({
+            homebrew_approve_lead: 'homebrewApprovalLead',
+            homebrew_deny_lead: 'homebrewDenialLead',
+            homebrew_early_approve_lead: 'homebrewEarlyApprovalLead',
+            homebrew_early_deny_lead: 'homebrewEarlyDenialLead',
+        })) {
+            const value = interaction.options.getInteger(option);
+            if (value === null) continue;
+            if (!Number.isSafeInteger(value) || value < 1) {
+                await interaction.editReply('Homebrew vote leads must be positive whole numbers.');
+                return;
+            }
+            config[key] = value;
+        }
         if (numberOfCharacters) {
             for (let index = 1; index <= MAX_CHARS; index++) {
                 if (index <= numberOfCharacters) {

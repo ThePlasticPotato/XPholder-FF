@@ -1,6 +1,7 @@
 const { ChannelType } = require('discord.js');
 const { HomebrewPollStore } = require('./homebrewPollStore');
 const { HOMEBREW_VOTING } = require('../config.json');
+const { getHomebrewSettings } = require('../homebrewSettings');
 
 const DAY = 24 * 60 * 60 * 1000;
 const WEEK = 7 * DAY;
@@ -12,15 +13,19 @@ const RESULTS = {
     timed_out: 'This submission has timed out.',
 };
 const NO_CONSENSUS = 'This submission has not yet arrived at a consensus in review.';
+const MANUAL_VERDICT = 'This submission has reached a voting consensus and is awaiting a manual verdict.';
 const terminal = state => !['initializing', 'polling', 'deciding'].includes(state);
 const missing = error => [10003, 10008].includes(error.code);
 const sameTags = (a, b) => a.length === b.length && a.every(tag => b.includes(tag));
 
-function evaluateVote(poll, votes, now, { manual = false, skipWait = false } = {}) {
+function evaluateVote(poll, votes, now, options = {}) {
+    const { manual = false, skipWait = false, autoVerdicts, approvalLead, denialLead,
+        earlyApprovalLead, earlyDenialLead } = { ...getHomebrewSettings(), ...options };
     const balance = votes.up - votes.down;
     const daily = skipWait || now >= poll.nextCheckAt || (manual && now >= poll.createdAt + DAY);
-    if (Math.abs(balance) >= 6 || (daily && Math.abs(balance) >= 3)) {
-        return balance > 0 ? 'approved' : 'denied';
+    if (manual || autoVerdicts) {
+        if (balance >= earlyApprovalLead || (daily && balance >= approvalLead)) return 'approved';
+        if (-balance >= earlyDenialLead || (daily && -balance >= denialLead)) return 'denied';
     }
     return now >= poll.createdAt + WEEK ? 'timed_out' : null;
 }
@@ -250,12 +255,34 @@ class HomebrewVoting {
             down: [...down.keys()].filter(id => eligible.has(id)).length };
     }
 
+    async shouldHoldDecision(poll, thread) {
+        return ['approved', 'denied'].includes(poll.result) && !poll.decisionManual &&
+            !this.verdict(thread) && evaluateVote(poll, poll.votes, this.now(),
+                await this.store.settings(this.config.guildId)) !== poll.result;
+    }
+
+    async holdDecision(poll) {
+        poll.state = 'polling';
+        delete poll.result;
+        delete poll.decidedAt;
+        delete poll.decisionManual;
+        delete poll.announcementId;
+        await this.store.put(poll);
+        return poll;
+    }
+
     async check(id, options = {}) {
         let poll = await this.store.get(id);
         if (!poll || terminal(poll.state)) return poll;
         try {
             let thread = await this.fetchThread(id);
-            if (poll.state === 'deciding') return await this.finish(poll, thread);
+            if (poll.state === 'deciding') {
+                // Recount unpublished automatic verdicts using current settings after a retry/restart.
+                if (['approved', 'denied'].includes(poll.result) && !poll.decisionManual && !this.verdict(thread)) {
+                    await this.holdDecision(poll);
+                }
+                else return await this.finish(poll, thread);
+            }
             if (poll.state === 'initializing') {
                 poll = await this.initialize(poll, thread);
                 if (terminal(poll.state)) return poll;
@@ -270,15 +297,22 @@ class HomebrewVoting {
                 return await this.cancel(poll, thread);
             }
             const now = this.now();
-            const result = evaluateVote(poll, poll.votes, now, options);
+            const settings = await this.store.settings(this.config.guildId);
+            const result = evaluateVote(poll, poll.votes, now, { ...options, ...settings });
             if (result) {
                 poll.state = 'deciding';
                 poll.result = result;
                 poll.decidedAt = now;
+                poll.decisionManual = options.manual === true;
                 await this.store.put(poll);
                 return await this.finish(poll, thread);
             }
             if (now >= poll.nextCheckAt) {
+                if (!poll.pendingReminderAt) {
+                    poll.pendingReminderText = !settings.autoVerdicts && evaluateVote(poll, poll.votes, now,
+                        { ...settings, manual: true, skipWait: true })
+                        ? MANUAL_VERDICT : NO_CONSENSUS;
+                }
                 poll.pendingReminderAt = poll.pendingReminderAt || now;
                 poll.pendingReminderDay = Math.floor((now - poll.createdAt) / DAY);
                 poll.nextCheckAt = Math.min(poll.createdAt + WEEK, poll.createdAt + (Math.floor((now - poll.createdAt) / DAY) + 1) * DAY);
@@ -314,7 +348,7 @@ class HomebrewVoting {
     }
 
     async remind(poll, thread) {
-        const content = `<@&${this.config.teamRole}>\n${NO_CONSENSUS}`;
+        const content = poll.pendingReminderText || NO_CONSENSUS;
         const existing = await this.findMessage(thread, content, poll.pendingReminderAt);
         thread = await this.fetchThread(poll.id);
         if (this.verdict(thread) || !thread.appliedTags.includes(this.config.pollingTag) || this.overrides.has(poll.id)) {
@@ -323,10 +357,11 @@ class HomebrewVoting {
         if (!existing) {
             if (thread.archived) await thread.setArchived(false, 'Request homebrew team votes');
             await thread.send({ content, nonce: `${poll.id}-${poll.pendingReminderDay}`, enforceNonce: true,
-                allowedMentions: { parse: [], users: [], roles: [this.config.teamRole] } });
+                allowedMentions: { parse: [], users: [], roles: [] } });
         }
         delete poll.pendingReminderAt;
         delete poll.pendingReminderDay;
+        delete poll.pendingReminderText;
         await this.store.put(poll);
     }
 
@@ -334,6 +369,7 @@ class HomebrewVoting {
         const verdict = this.verdict(thread);
         if (this.overrides.has(poll.id) || (verdict && verdict !== poll.result) ||
             (!verdict && !thread.appliedTags.includes(this.config.pollingTag))) return this.cancel(poll, thread);
+        if (await this.shouldHoldDecision(poll, thread)) return this.holdDecision(poll);
         if (thread.archived) await thread.setArchived(false, 'Announce homebrew voting result');
         const statusTags = [this.config.pollingTag, ...Object.values(this.config.tags)];
         await this.setTags(thread, [...thread.appliedTags.filter(tag => !statusTags.includes(tag)), this.config.tags[poll.result]]);

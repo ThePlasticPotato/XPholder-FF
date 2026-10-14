@@ -1,6 +1,7 @@
 const sqlite3 = require('sqlite3');
 const fs = require('node:fs');
 const path = require('node:path');
+const { HOMEBREW_DEFAULTS, getHomebrewSettings } = require('../homebrewSettings');
 
 class HomebrewPollStore {
     constructor(filename = path.join(__dirname, '../../guilds/homebrew-polls.db')) {
@@ -50,6 +51,29 @@ class HomebrewPollStore {
     async active() {
         return (await this.all("SELECT data FROM homebrew_polls WHERE state IN ('initializing', 'polling', 'deciding')"))
             .map(row => JSON.parse(row.data));
+    }
+
+    async settings(guildId) {
+        // Read the same settings /edit_config writes on each check, including existing polls.
+        const filename = path.join(path.dirname(this.filename), `${guildId}.db`);
+        if (!fs.existsSync(filename)) return getHomebrewSettings();
+        let guildDb;
+        await new Promise((resolve, reject) => {
+            guildDb = new sqlite3.Database(filename, sqlite3.OPEN_READONLY, error => error ? reject(error) : resolve());
+        });
+        guildDb.configure('busyTimeout', 5000);
+        try {
+            const keys = Object.keys(HOMEBREW_DEFAULTS);
+            const rows = await new Promise((resolve, reject) => guildDb.all(
+                `SELECT name, value FROM config WHERE name IN (${keys.map(() => '?').join(', ')})`, keys, (error, rows) => {
+                    if (error?.message.includes('no such table: config')) resolve([]);
+                    else if (error) reject(error);
+                    else resolve(rows);
+                }));
+            return getHomebrewSettings(Object.fromEntries(rows.map(row => [row.name, row.value])));
+        } finally {
+            await new Promise((resolve, reject) => guildDb.close(error => error ? reject(error) : resolve()));
+        }
     }
 
     close() {

@@ -14,7 +14,7 @@ module.exports = {
     private: true,
     data: new SlashCommandBuilder().setName('verify_homebrew').setDescription('Check a homebrew submission vote now [ MOD / HOMEBREW TEAM ]')
         .addStringOption(option => option.setName('post').setDescription('Forum post link or thread ID; defaults to the current post'))
-        .addBooleanOption(option => option.setName('skip_wait').setDescription('Use the 24-hour vote threshold now (3-vote lead)')),
+        .addBooleanOption(option => option.setName('skip_wait').setDescription('Use the configured daily approval/denial vote leads now')),
     async execute(service, interaction) {
         const roles = interaction.member?._roles ?? (Array.isArray(interaction.member?.roles) ? interaction.member.roles : []);
         const allowed = roles.includes(HOMEBREW_VOTING.teamRole) || service.isMod(roles) ||

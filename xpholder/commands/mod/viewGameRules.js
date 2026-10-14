@@ -2,6 +2,7 @@ const { SlashCommandBuilder } = require('@discordjs/builders');
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder } = require('discord.js');
 const { XPHOLDER_COLOUR, XPHOLDER_ICON_URL, DEV_SERVER_URL } = require('../../config.json');
 const { chunkArray, splitObjectToList, mergeListOfObjects } = require("../../utils");
+const { getHomebrewSettings } = require('../../homebrewSettings');
 
 module.exports = {
     data: new SlashCommandBuilder()
@@ -98,13 +99,18 @@ BUILD EMBEDS
 ------------
 */
 function buildCongifEmbed(configObj) {
+    const homebrew = getHomebrewSettings(configObj);
     return new EmbedBuilder()
         .setTitle("Config")
         .setDescription(`**Level Up Message :**
 ${configObj.levelUpMessage}
 
 **Approve Message :**
-${configObj.approveMessage}`)
+${configObj.approveMessage}
+
+**Automatic Homebrew Approval / Denial:** ${homebrew.autoVerdicts ? 'on' : 'off'}
+**Homebrew Daily Leads:** Approve +${homebrew.approvalLead} / Deny -${homebrew.denialLead}
+**Homebrew Early Leads:** Approve +${homebrew.earlyApprovalLead} / Deny -${homebrew.earlyDenialLead}`)
         .setFields(
             { inline: true, name: "Approve Level", value: `${configObj.approveLevel}` },
             { inline: true, name: "Character 1", value: `<@&${configObj.character1RoleId}>` },

@@ -1,6 +1,7 @@
 const { listOfObjsToObj } = require("../utils")
 const { LEVELS } = require("../config.json")
 const { factionService } = require('./factions');
+const { HOMEBREW_DEFAULTS } = require('../homebrewSettings');
 const { REQUIREMENT_DEFAULTS, getLevelInfo, requirementBit, requirementMask, requirementsThroughLevel } = require("../progression");
 
 class guildService {
@@ -55,7 +56,7 @@ class guildService {
                     await run("UPDATE characters SET level_up_requirements_met = ? WHERE character_id = ?;", [mask, character.character_id]);
                 }
             }
-            for (const [name, value] of Object.entries(REQUIREMENT_DEFAULTS)) {
+            for (const [name, value] of Object.entries({ ...REQUIREMENT_DEFAULTS, ...HOMEBREW_DEFAULTS })) {
                 await run("INSERT OR IGNORE INTO config (name, value) VALUES (?, ?);", [name, value]);
             }
             await run("COMMIT;");
