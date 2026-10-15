@@ -25,7 +25,8 @@ module.exports = {
                 { skipWait: interaction.options.getBoolean('skip_wait') ?? false });
             const tally = poll.votes ? `👍 ${poll.votes.up} · 👎 ${poll.votes.down}\n` : '';
             const status = { approved: 'Approved by vote.', denied: 'Denied by vote.', timed_out: 'Timed out.',
-                manual: 'A verdict was set manually. Automatic voting has stopped.', cancelled: 'Automatic voting has stopped.' }[poll.state] ||
+                manual: 'A verdict was set manually. Automatic voting has stopped.',
+                cancelled: 'Automatic voting has stopped. To restart, remove any verdict tag, restore **being polled**, and run this command again.' }[poll.state] ||
                 `No decision. Next daily check: <t:${Math.floor(poll.nextCheckAt / 1000)}:R>.`;
             await interaction.editReply({ content: tally + status, allowedMentions: { parse: [] } });
         } catch (error) { await interaction.editReply(error.message); }

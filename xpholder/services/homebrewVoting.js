@@ -321,6 +321,11 @@ class HomebrewVoting {
             if (poll.pendingReminderAt) await this.remind(poll, thread);
             return poll;
         } catch (error) {
+            // ThreadCreate can arrive before Discord makes the starter message available.
+            // Keep setup pending so the next check retries instead of permanently stopping the poll.
+            if (error.code === 10008 && poll.state === 'initializing') {
+                throw new Error('The starter message is not available yet; poll setup will retry automatically.', { cause: error });
+            }
             if (!missing(error)) throw error;
             poll.state = 'cancelled';
             await this.store.put(poll);
@@ -448,9 +453,20 @@ class HomebrewVoting {
         await this.ready();
         return this.serial(id, async () => {
             const thread = await this.fetchThread(id);
-            if (!await this.store.get(id)) {
+            const poll = await this.store.get(id);
+            if (!poll) {
                 if (!thread.appliedTags.includes(this.config.pollingTag)) throw new Error('This post is not being polled.');
                 await this.track(thread, true);
+            } else if (poll.state === 'cancelled' && thread.appliedTags.includes(this.config.pollingTag) && !this.verdict(thread)) {
+                // An explicit check after restoring the tag can recover a stopped poll.
+                // Preserve the original deadline and opening-message ID to avoid resetting or pinging twice.
+                poll.state = 'initializing';
+                poll.tagApplied = true;
+                delete poll.result;
+                delete poll.decidedAt;
+                delete poll.decisionManual;
+                delete poll.announcementId;
+                await this.store.put(poll);
             }
             return this.check(id, { manual: true, skipWait });
         });
